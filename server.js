@@ -724,8 +724,7 @@ async function turnStep(s, q, id, T0) {
   if (s.job) return holdStep(s, id);
   if (s.mode === 'wait') {
     const d = String(q[s.p] || '').trim();
-    // A leading star selects voice recording immediately, even if Yemot returns it as a dot or with extra digits.
-    if (/^[*.]/.test(d)) return askFor(s, 't-' + sp('דבר עכשיו ולסיום הקש סולמית'));
+    if (d === '*' || d === '.') return askFor(s, '');
     if (d && /^[0-9]/.test(d)) return kbStep(s, q, id, T0, d);
     return tapAny(s, 't-' + sp('להקלטה הקש כוכבית ולהקלדה הקש ספרה'));
   }
