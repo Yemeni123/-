@@ -989,7 +989,15 @@ async function historyStep(s, q) {
     }
     case '5': s.i = (s.i + 1) % s.list.length; return showItem(s);
     case '6': s.i = (s.i - 1 + s.list.length) % s.list.length; return showItem(s);
-    case '0': return 'id_list_message=t-' + sp('להתראות');
+    case '0':
+      // In history, zero continues the selected conversation and immediately records a new question.
+      try {
+        await continueConv(s);
+        return askFor(s, '');
+      } catch (e) {
+        console.error('history recording failed:', e.message);
+        return showItem(s, 'הייתה תקלה בהפעלת ההקלטה');
+      }
     default: return showItem(s);
   }
 }
