@@ -530,19 +530,33 @@ async function tts(text, deadline, o) {
 }
 
 async function download(name, deadline, d) {
+  const filePath = yp(name, d);
+  const attempts = [
+    { method: 'GET', url: YM + 'DownloadFile?token=' + encodeURIComponent(TOKEN) + '&path=' + encodeURIComponent(filePath), opt: {} },
+    { method: 'POST', url: YM + 'DownloadFile', opt: {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: TOKEN, path: filePath })
+    } }
+  ];
   let last = '';
-  for (let i = 0; i < 4; i++) {
-    try {
-      const r = await http(YM + 'DownloadFile?token=' + encodeURIComponent(TOKEN) + '&path=' + encodeURIComponent(yp(name, d)), {}, 8000, deadline);
-      const b = Buffer.from(await r.arrayBuffer());
-      if (r.ok && b.length > 100 && b.subarray(0, 4).toString() === 'RIFF') return b;
-      last = r.status + ' ' + b.subarray(0, 80).toString('utf8').replace(/\s+/g, ' ');
-    } catch (e) {
-      if (isBudget(e)) throw e;
-      last = e.message;
+  for (let i = 0; i < 3; i++) {
+    for (const a of attempts) {
+      try {
+        const r = await http(a.url, a.opt, 8000, deadline);
+        const b = Buffer.from(await r.arrayBuffer());
+        const magic = b.subarray(0, 4).toString('ascii');
+        if (r.ok && b.length > 100 && magic === 'RIFF') return b;
+        last = a.method + ' status=' + r.status + ' bytes=' + b.length +
+          ' type=' + (r.headers.get('content-type') || '') +
+          ' response=' + b.subarray(0, 100).toString('utf8').replace(/[\r\n]+/g, ' ');
+      } catch (e) {
+        if (isBudget(e)) throw e;
+        last = a.method + ' error=' + e.message;
+      }
     }
-    await sleep(500);
+    if (i < 2) await sleep(600);
   }
+  console.error('recording download error', { file: filePath, details: last });
   throw new Error('download failed ' + last);
 }
 
