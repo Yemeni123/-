@@ -79,7 +79,7 @@ let CFG = [];
 try { CFG = JSON.parse(process.env.EXTENSIONS || '[]'); } catch (e) { CFG = []; }
 if (!Array.isArray(CFG) || !CFG.length) CFG = [{ p: EXT, m: process.env.MODE || '2', x: '', g: process.env.GREETING || '' }];
 // one opening for both ways to ask: typing with the phone keys, or recording
-const DEFAULT_GREET = 'שלום להקלטה הקש כוכבית ולהקלדה הקש ספרה. לסיום השאלה הקש סולמית';
+const DEFAULT_GREET = 'שלום להקלטה הקש אפס ולהקלדה הקש ספרה אחרת. לסיום השאלה הקש סולמית';
 const EXTS = {};
 for (const c of CFG) {
   const p = String(c.p || '').replace(/^\/+|\/+$/g, '');
@@ -724,9 +724,10 @@ async function turnStep(s, q, id, T0) {
   if (s.job) return holdStep(s, id);
   if (s.mode === 'wait') {
     const d = String(q[s.p] || '').trim();
-    if (d === '*' || d === '.') return askFor(s, '');
-    if (d && /^[0-9]/.test(d)) return kbStep(s, q, id, T0, d);
-    return tapAny(s, 't-' + sp('להקלטה הקש כוכבית ולהקלדה הקש ספרה'));
+    // Zero as the very first key starts recording; all other digits start typing.
+    if (d === '0') return askFor(s, '');
+    if (d && /^[1-9]/.test(d)) return kbStep(s, q, id, T0, d);
+    return tapAny(s, 't-' + sp('להקלטה הקש אפס ולהקלדה הקש ספרה אחרת'));
   }
   if (s.mode === 'type') return kbStep(s, q, id, T0);
   return runTurn(s, q, id, T0);
