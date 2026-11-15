@@ -1,4 +1,5 @@
 const express = require('express');
+app.use('/selftest', (req, res) => res.status(404).send('Not Found'));
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
