@@ -667,7 +667,7 @@ const KB_NAME = { 'א': 'אלף', 'ב': 'בית', 'ג': 'גימל', 'ד': 'דל�
 const KB_FINAL = { 'כ': 'ך', 'מ': 'ם', 'נ': 'ן', 'פ': 'ף', 'צ': 'ץ' };
 const KB_MORE = sp('להקלדת שאלה נוספת הקש אותיות או הקלט את עצמך');
 // Short keypad window before recording; restore the previous 4-second behavior with INPUT_WAIT_SEC=4.
-const WAIT_SEC = Math.min(15, Math.max(1, parseInt(process.env.INPUT_WAIT_SEC, 10) || 1));
+const WAIT_SEC = Math.min(15, Math.max(2, parseInt(process.env.INPUT_WAIT_SEC, 10) || 4));
 const kbFinal = t => t.replace(/(?<=[א-ת])[כמנפצ](?=\s|$)/g, c => KB_FINAL[c]);
 // waits for a key (typing) or for silence (recording); min digits 0 lets the caller press nothing
 const tapAny = (s, pre) => {
