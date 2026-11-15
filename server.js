@@ -724,10 +724,10 @@ async function turnStep(s, q, id, T0) {
   if (s.job) return holdStep(s, id);
   if (s.mode === 'wait') {
     const d = String(q[s.p] || '').trim();
-    // Zero as the very first key starts recording; all other digits start typing.
-    if (d === '0') return askFor(s, '');
-    if (d && /^[1-9]/.test(d)) return kbStep(s, q, id, T0, d);
-    return tapAny(s, 't-' + sp('להקלטה הקש אפס ולהקלדה הקש ספרה אחרת'));
+    // Only an initial star selects recording; once a digit is pressed, the caller is typing.
+    if (d === '*' || d === '.') return askFor(s, '');
+    if (d && /^[0-9]/.test(d)) return kbStep(s, q, id, T0, d);
+    return tapAny(s, 't-' + sp('להקלטה הקש כוכבית ולהקלדה הקש ספרה'));
   }
   if (s.mode === 'type') return kbStep(s, q, id, T0);
   return runTurn(s, q, id, T0);
