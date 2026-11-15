@@ -646,7 +646,7 @@ const askFor = (s, pre) => {
   s.mode = 'rec';
   s.p = 'Q' + s.e + s.n;
   s.name = 'q' + s.e + 'n' + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,record,' + s.d + ',' + s.name + ',no,,,1,' + REC_MAX;
+  return 'read=' + pre + '=' + s.p + ',,record,' + s.d + ',' + s.name + ',no,,,1,' + REC_MAX;
 };
 // asks for a single key press
 const tapFor = (s, pre) => {
@@ -722,7 +722,7 @@ async function turnStep(s, q, id, T0) {
   if (s.mode === 'wait') {
     const d = String(q[s.p] || '').trim();
     if (d) { s.buf = ''; const text = kbDecode(d); return text ? runTurn(s, q, id, T0, text) : tapAny(s, 't-' + sp('נסה להקליד שוב')); }
-    return askFor(s, 't-' + sp('דבר עכשיו'));
+    return askFor(s, 't-' + sp('דבר עכשיו ולסיום הקש סולמית'));
   }
   if (s.mode === 'type') return kbStep(s, q, id, T0);
   return runTurn(s, q, id, T0);
@@ -736,7 +736,7 @@ function endCall(id) {
 
 // starts the turn in the background and plays the songs of the songs folder until the answer is ready
 function runTurn(s, q, id, T0, typed) {
-  if (!typed && !q[s.p]) return tapAny(s, 't-' + AGAIN);
+  if (!typed && !q[s.p]) { console.error(id, 'recording callback missing', { param: s.p, name: s.name, keys: Object.keys(q).filter(k => /^(Q|K)/.test(k)) }); return askFor(s, 't-' + sp('ההקלטה לא התקבלה נסה שוב')); }
   s.jobT0 = Date.now();
   s.hold = null;
   s.holdP = songsFor(s.ph).catch(() => []);
