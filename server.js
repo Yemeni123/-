@@ -79,7 +79,7 @@ let CFG = [];
 try { CFG = JSON.parse(process.env.EXTENSIONS || '[]'); } catch (e) { CFG = []; }
 if (!Array.isArray(CFG) || !CFG.length) CFG = [{ p: EXT, m: process.env.MODE || '2', x: '', g: process.env.GREETING || '' }];
 // one opening for both ways to ask: typing with the phone keys, or recording
-const DEFAULT_GREET = 'שלום הקלד באמצעות מקשי הטלפון או הקלט את עצמך ובסיום הקש כוכבית סולמית';
+const DEFAULT_GREET = 'שלום אפשר לדבר ולהקליט שאלה או להקליד באמצעות מקשי הטלפון. לסיום ההקלדה הקש סולמית';
 const EXTS = {};
 for (const c of CFG) {
   const p = String(c.p || '').replace(/^\/+|\/+$/g, '');
