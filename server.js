@@ -530,7 +530,10 @@ async function tts(text, deadline, o) {
 }
 
 async function download(name, deadline, d) {
-  const filePath = yp(name, d);
+  const returnedPath = String(name || '').trim();
+  const filePath = /^\/?(?:ivr2:)?\/?[0-9]+(?:\/[0-9]+)*\/[a-zA-Z0-9_-]+\.wav$/i.test(returnedPath)
+    ? (returnedPath.startsWith('ivr2:') ? returnedPath : 'ivr2:' + (returnedPath.startsWith('/') ? '' : '/') + returnedPath)
+    : yp(name, d);
   const attempts = [
     { method: 'GET', url: YM + 'DownloadFile?token=' + encodeURIComponent(TOKEN) + '&path=' + encodeURIComponent(filePath), opt: {} },
     { method: 'POST', url: YM + 'DownloadFile', opt: {
@@ -738,6 +741,7 @@ function endCall(id) {
 // starts the turn in the background and plays the songs of the songs folder until the answer is ready
 function runTurn(s, q, id, T0, typed) {
   if (!typed && !q[s.p]) { console.error(id, 'recording callback missing', { param: s.p, name: s.name, keys: Object.keys(q).filter(k => /^(Q|K)/.test(k)) }); return askFor(s, 't-' + sp('ההקלטה לא התקבלה נסה שוב')); }
+  if (!typed) console.log(id, 'recording callback received', { param: s.p, value: String(q[s.p]).slice(0, 120), expectedName: s.name });
   s.jobT0 = Date.now();
   s.hold = null;
   s.holdP = songsFor(s.ph).catch(() => []);
@@ -772,7 +776,11 @@ async function doTurn(s, q, id, T0, typed) {
     if (typed) {
       userPart = { text: 'השאלה הוקלדה במקשי הטלפון ולכן ייתכנו בה שגיאות כתיב ובלי סימני פיסוק. הבן את הכוונה וענה: ' + typed };
     } else {
-      const audio = await download(qn, deadline, s.d);
+      const recordingPath = String(q[s.p] || '').trim();
+      const audio = await download(recordingPath.startsWith('/') || recordingPath.startsWith('ivr2:') ? recordingPath : qn, deadline, s.d);
+      if (recordingPath.startsWith('/') || recordingPath.startsWith('ivr2:')) {
+        console.log(id, 'recording downloaded', { path: recordingPath, bytes: audio.length });
+      } else console.log(id, 'recording downloaded by expected name', { name: qn, bytes: audio.length });
       del(qn, s.d);
       userPart = { inlineData: { mimeType: 'audio/wav', data: audio.toString('base64') } };
     }
