@@ -644,13 +644,12 @@ const tapFor = (s, pre) => {
 // ---------- asking: the caller either types the question with the phone keys or records it ----------
 // after the opening message (and after every answer) the line waits a few seconds for a key press:
 //   a key was pressed -> typing mode, nothing pressed -> the caller is asked to speak and the question is recorded
-// typing works like an old phone: press a key as many times as the place of the letter on it, then #: 777# = ת (ר ש ת), 77# = ש, 7# = ר
-// keys as printed on the phone: 3 אבג, 2 דהו, 6 זחט, 5 יכל, 4 מנ, 9 סעפ, 8 צק, 7 רשת
-// 0# = space, 00# = delete the last character, *# = send the question (change the send key with KBD_SEND)
-// final letters (ך ם ן ף ץ) are added automatically at the end of a word
+// Continuous multi-tap: repeated digit selects a letter; * commits the current letter,
+// especially when the next letter uses the same key. # ends the entire question.
+// A change to another digit also commits the previous letter.
 const KB_KEYS = { '3': 'אבג', '2': 'דהו', '6': 'זחט', '5': 'יכל', '4': 'מנ', '9': 'סעפ', '8': 'צק', '7': 'רשת' };
 const KB_NAME = { 'א': 'אלף', 'ב': 'בית', 'ג': 'גימל', 'ד': 'דלת', 'ה': 'הא', 'ו': 'ואו', 'ז': 'זין', 'ח': 'חית', 'ט': 'טית', 'י': 'יוד', 'כ': 'כף', 'ל': 'למד', 'מ': 'מם', 'נ': 'נון', 'ס': 'סמך', 'ע': 'עין', 'פ': 'פא', 'צ': 'צדי', 'ק': 'קוף', 'ר': 'ריש', 'ש': 'שין', 'ת': 'תו' };
-const KB_SEND = String(process.env.KBD_SEND || '*').replace(/#/g, '').trim() || '*';
+// # is the only send key; Yemot consumes it as the read terminator.
 const KB_FINAL = { 'כ': 'ך', 'מ': 'ם', 'נ': 'ן', 'פ': 'ף', 'צ': 'ץ' };
 const KB_MORE = sp('להקלדת שאלה נוספת הקש אותיות או הקלט את עצמך');
 const WAIT_SEC = Math.min(15, Math.max(2, parseInt(process.env.INPUT_WAIT_SEC, 10) || 4));
@@ -662,37 +661,44 @@ const tapAny = (s, pre) => {
   s.p = 'K' + s.e + s.n;
   return 'read=' + pre + '=' + s.p + ',no,30,0,' + WAIT_SEC + ',No';
 };
-// waits for one key sequence (up to 30 digits, ended by #, 10 seconds); every request uses a new parameter name
+// Collect a continuous sequence until # (Yemot's default end key).
 const kbAsk = (s, pre) => {
   s.n++;
   s.mode = 'type';
   s.p = 'K' + s.e + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,30,1,10,No';
+  return 'read=' + pre + '=' + s.p + ',no,200,1,30,NO';
 };
-// applies one key sequence to the typed text; returns what to say back, or send:true
-function kbKey(s, raw) {
-  const d = String(raw || '').replace(/#/g, '').trim();
-  if (d === KB_SEND) return { send: true };
-  const m = /^([2-9])\1*$/.exec(d);
-  if (m && KB_KEYS[m[1]]) {
-    const L = KB_KEYS[m[1]];
-    const ch = L[(d.length - 1) % L.length];
-    s.buf += ch;
-    return { say: KB_NAME[ch] };
+// Convert continuous multi-tap input into Hebrew. Yemot may return * as a dot.
+function kbDecode(raw) {
+  const input = String(raw || '').replace(/\\./g, '*');
+  let out = '', key = '', count = 0;
+  const commit = () => {
+    if (!key) return;
+    if (key === '0') out += count === 1 ? ' ' : '';
+    else if (KB_KEYS[key]) {
+      const letters = KB_KEYS[key];
+      out += letters[(count - 1) % letters.length];
+    }
+    key = ''; count = 0;
+  };
+  for (const ch of input) {
+    if (ch === '*' || ch === '#') { commit(); continue; }
+    if (!/[0-9]/.test(ch)) continue;
+    if (ch !== key) { commit(); key = ch; count = 1; }
+    else count++;
   }
-  if (d === '0') { s.buf += ' '; return { say: 'רווח' }; }
-  if (d === '00') { s.buf = s.buf.slice(0, -1); return { say: 'נמחק' }; }
-  return { say: 'לא מוכר' };
+  commit();
+  return kbFinal(out.replace(/\\s+/g, ' ').trim());
 }
-// first = the key sequence that was pressed while the line was waiting (it already belongs to the typed text)
 async function kbStep(s, q, id, T0, first) {
-  const d = first !== undefined ? first : q[s.p];
-  if (!d) return kbAsk(s, 't-' + sp('הקש אות'));
-  const k = kbKey(s, d);
-  if (!k.send) { if (s.buf.length > 600) s.buf = s.buf.slice(0, 600); return kbAsk(s, 't-' + sp(k.say)); }
-  const text = kbFinal(s.buf.replace(/\s+/g, ' ').trim());
-  s.buf = '';
-  if (!text) return kbAsk(s, 't-' + sp('עדיין לא הקלדת כלום'));
+  if (first !== undefined) {
+    s.kbPrefix = String(first || '');
+    return kbAsk(s, 't-' + sp('המשך להקליד ברצף ולסיום הקש סולמית'));
+  }
+  const raw = String(q[s.p] || '');
+  const text = kbDecode((s.kbPrefix || '') + raw);
+  s.kbPrefix = '';
+  if (!text) return tapAny(s, 't-' + sp('לא התקבלה שאלה נסה שוב'));
   return runTurn(s, q, id, T0, text);
 }
 // the next request of a call: decides between typing, recording and the hold music of a question that is being answered
