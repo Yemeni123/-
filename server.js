@@ -724,7 +724,7 @@ async function turnStep(s, q, id, T0) {
   if (s.job) return holdStep(s, id);
   if (s.mode === 'wait') {
     const d = String(q[s.p] || '').trim();
-    // Only an initial star selects recording; once a digit is pressed, the caller is typing.
+    // Zero as the first key starts recording immediately, without another prompt.
     if (d === '0') return askFor(s, '');
     if (d && /^[1-9]/.test(d)) return kbStep(s, q, id, T0, d);
     return tapAny(s, 't-' + sp('להקלטה הקש אפס ולהקלדה הקש ספרה אחרת'));
@@ -733,11 +733,11 @@ async function turnStep(s, q, id, T0) {
   return runTurn(s, q, id, T0);
 }
 
-// Double star is an explicit shortcut to the root menu when Yemot passes the key sequence to the API.
-// Yemot can intercept star itself, so the IVR menu configuration must also allow it.
-function requestedRootByDoubleStar(s, q) {
+// A single star routes back to the main menu if Yemot passes it to our API.
+// Yemot may also process '*' itself before the request reaches this server.
+function requestedRootByStar(s, q) {
   const candidates = [s.p, 'H' + s.e + s.hn];
-  return candidates.some(k => k && /^(?:\*\*|\.\.)$/.test(String(q[k] || '').trim()));
+  return candidates.some(k => k && /^(?:\*|\.)$/.test(String(q[k] || '').trim()));
 }
 
 function endCall(id) {
@@ -1185,7 +1185,7 @@ app.all(['/yemot', '/yemot/:e'], async (req, res) => {
 
     const s = calls[id] || (calls[id] = newSession(ext.d, ext.sys, ext.g, { ph: phoneOf(q) }));
     s.t = Date.now();
-    if (requestedRootByDoubleStar(s, q)) { endCall(id); return res.send('go_to_folder=/'); }
+    if (requestedRootByStar(s, q)) { endCall(id); return res.send('go_to_folder=/'); }
 
     // first request of the call: the opening message, then the line waits for typing or for silence (recording)
     if (!s.mode) {
@@ -1219,7 +1219,7 @@ app.all('/history', async (req, res) => {
 
     const s = calls[id] || (calls[id] = newSession(HD, EXT_FIRST.sys, '', { ph, hm: '', list: [], i: 0 }));
     s.t = Date.now();
-    if (requestedRootByDoubleStar(s, q)) { endCall(id); return res.send('go_to_folder=/'); }
+    if (requestedRootByStar(s, q)) { endCall(id); return res.send('go_to_folder=/'); }
     if (!s.hm) console.log(id, 'history start, params:', Object.keys(q).join(','));
 
     if (s.hm === 'talk') {
