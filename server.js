@@ -659,7 +659,7 @@ const tapAny = (s, pre) => {
   s.n++;
   s.mode = 'wait';
   s.p = 'K' + s.e + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,30,0,' + WAIT_SEC + ',No';
+  return 'read=' + pre + '=' + s.p + ',no,200,0,' + WAIT_SEC + ',No';
 };
 // Collect a continuous sequence until # (Yemot's default end key).
 const kbAsk = (s, pre) => {
@@ -706,7 +706,7 @@ async function turnStep(s, q, id, T0) {
   if (s.job) return holdStep(s, id);
   if (s.mode === 'wait') {
     const d = String(q[s.p] || '').trim();
-    if (d) { s.buf = ''; return kbStep(s, q, id, T0, d); }
+    if (d) { s.buf = ''; const text = kbDecode(d); return text ? runTurn(s, q, id, T0, text) : tapAny(s, 't-' + sp('נסה להקליד שוב')); }
     return askFor(s, 't-' + sp('דבר עכשיו'));
   }
   if (s.mode === 'type') return kbStep(s, q, id, T0);
