@@ -79,7 +79,7 @@ let CFG = [];
 try { CFG = JSON.parse(process.env.EXTENSIONS || '[]'); } catch (e) { CFG = []; }
 if (!Array.isArray(CFG) || !CFG.length) CFG = [{ p: EXT, m: process.env.MODE || '2', x: '', g: process.env.GREETING || '' }];
 // one opening for both ways to ask: typing with the phone keys, or recording
-const DEFAULT_GREET = 'שלום הַקְלֵד או הקלט את שאלתך. לסיום הקש סולמית';
+const DEFAULT_GREET = 'שלום להקלטה הקש כוכבית ולהקלדה הקש ספרה. לסיום השאלה הקש סולמית';
 const EXTS = {};
 for (const c of CFG) {
   const p = String(c.p || '').replace(/^\/+|\/+$/g, '');
@@ -674,7 +674,7 @@ const tapAny = (s, pre) => {
   s.n++;
   s.mode = 'wait';
   s.p = 'K' + s.e + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,200,0,' + WAIT_SEC + ',No';
+  return 'read=' + pre + '=' + s.p + ',no,1,0,' + WAIT_SEC + ',No';
 };
 // Collect a continuous sequence until # (Yemot's default end key).
 const kbAsk = (s, pre) => {
@@ -721,8 +721,9 @@ async function turnStep(s, q, id, T0) {
   if (s.job) return holdStep(s, id);
   if (s.mode === 'wait') {
     const d = String(q[s.p] || '').trim();
-    if (d) { s.buf = ''; const text = kbDecode(d); return text ? runTurn(s, q, id, T0, text) : tapAny(s, 't-' + sp('נסה להקליד שוב')); }
-    return askFor(s, 't-' + sp('דבר עכשיו ולסיום הקש סולמית'));
+    if (d === '*' || d === '.') return askFor(s, 't-' + sp('דבר עכשיו ולסיום הקש סולמית'));
+    if (d && /^[0-9]/.test(d)) return kbStep(s, q, id, T0, d);
+    return tapAny(s, 't-' + sp('להקלטה הקש כוכבית ולהקלדה הקש ספרה'));
   }
   if (s.mode === 'type') return kbStep(s, q, id, T0);
   return runTurn(s, q, id, T0);
