@@ -1210,6 +1210,48 @@ app.all(['/yemot', '/yemot/:e'], async (req, res) => {
   }
 });
 
+// Secure voice-admin extension (intended for IVR extension 3).
+// Fail closed until both ADMIN_PHONE and ADMIN_PIN are configured in Render.
+const ADMIN_PHONE = String(process.env.ADMIN_PHONE || '').replace(/\D/g, '');
+const ADMIN_PIN = String(process.env.ADMIN_PIN || '');
+const ADMIN_SYS = buildSys('2', '') + ' אתה במצב ניהול קולי מאובטח. הסבר למנהל על הגדרות המערכת, תקלות ואפשרויות ניהול. אין לך הרשאה לשנות קוד, שרת או הגדרות בשיחה זו. לעולם אל תטען ששינוי בוצע אם לא הופעל כלי ניהול מאומת. אל תבקש סיסמאות או מפתחות API בקול.';
+const adminAuth = (q, s) => {
+  if (!ADMIN_PHONE || !/^\d{6,12}$/.test(ADMIN_PIN) || phoneOf(q) !== ADMIN_PHONE) return false;
+  if (s.adminOk) return true;
+  const entered = String(q[s.p] || '').trim();
+  if (s.mode === 'admin-pin' && entered && safeEq(entered, ADMIN_PIN)) {
+    s.adminOk = true;
+    s.mode = '';
+    return true;
+  }
+  return false;
+};
+app.all('/admin', async (req, res) => {
+  const q = { ...req.query, ...req.body };
+  const id = idOf(q);
+  res.type('text/plain');
+  try {
+    if (q.hangup === 'yes') { endCall(id); return res.send('noop=bye'); }
+    if (!ADMIN_PHONE || !/^\d{6,12}$/.test(ADMIN_PIN)) return res.send('id_list_message=t-' + sp('מצב ניהול עדיין לא הופעל יש להגדיר מספר מנהל וקוד סודי'));
+    if (phoneOf(q) !== ADMIN_PHONE) return res.send('id_list_message=t-' + sp('אין הרשאה לכניסה לשלוחה זו'));
+    const s = calls[id] || (calls[id] = newSession(EXT_FIRST.d, ADMIN_SYS, sp('שלום הגעת למצב ניהול קולי'), { ph: phoneOf(q), adminOk: false }));
+    s.t = Date.now();
+    if (requestedRootByStar(s, q)) { endCall(id); return res.send('go_to_folder=/'); }
+    if (!adminAuth(q, s)) {
+      s.n++;
+      s.mode = 'admin-pin';
+      s.p = 'P' + s.e + s.n;
+      return res.send('read=t-' + sp('הקש קוד מנהל ולסיום סולמית') + '=' + s.p + ',no,12,6,15,No');
+    }
+    if (!s.mode) return res.send(tapAny(s, 't-' + sp('מצב ניהול פעיל אפשר לשאול על מצב המערכת או לבקש הדרכה')));
+    const out = await turnStep(s, q, id, Date.now());
+    res.send(out);
+  } catch (e) {
+    console.error(id, 'admin error', e.message);
+    if (!res.headersSent) res.send('id_list_message=t-' + ERR);
+  }
+});
+
 // the history extension: point an API extension of Yemot to https://<your service>/history
 app.all('/history', async (req, res) => {
   const q = { ...req.query, ...req.body };
