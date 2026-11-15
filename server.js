@@ -638,7 +638,7 @@ const askFor = (s, pre) => {
 const tapFor = (s, pre) => {
   s.n++;
   s.p = 'M' + s.e + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,tap,1,1,7,No';
+  return 'read=' + pre + '=' + s.p + ',no,1,1,7,No';
 };
 
 // ---------- asking: the caller either types the question with the phone keys or records it ----------
@@ -660,14 +660,14 @@ const tapAny = (s, pre) => {
   s.n++;
   s.mode = 'wait';
   s.p = 'K' + s.e + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,tap,30,0,' + WAIT_SEC + ',No';
+  return 'read=' + pre + '=' + s.p + ',no,30,0,' + WAIT_SEC + ',No';
 };
 // waits for one key sequence (up to 30 digits, ended by #, 10 seconds); every request uses a new parameter name
 const kbAsk = (s, pre) => {
   s.n++;
   s.mode = 'type';
   s.p = 'K' + s.e + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,tap,30,1,10,No';
+  return 'read=' + pre + '=' + s.p + ',no,30,1,10,No';
 };
 // applies one key sequence to the typed text; returns what to say back, or send:true
 function kbKey(s, raw) {
@@ -735,7 +735,7 @@ async function holdStep(s, id) {
   for (let k = 0; k < HOLD_CHAIN; k++) msgs.push('f-' + SD + '/' + files[(s.hold.i + k) % files.length]);
   s.hold.i = (s.hold.i + HOLD_CHAIN) % files.length;
   s.hn++;
-  return 'read=' + msgs.join('.') + '=H' + s.e + s.hn + ',no,tap,1,0,1,No';
+  return 'read=' + msgs.join('.') + '=H' + s.e + s.hn + ',no,1,0,1,No';
 }
 
 // one turn: take the recording (or the typed text), ask Gemini, read the answer aloud, upload it; returns the reply for Yemot
