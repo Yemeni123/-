@@ -79,7 +79,7 @@ let CFG = [];
 try { CFG = JSON.parse(process.env.EXTENSIONS || '[]'); } catch (e) { CFG = []; }
 if (!Array.isArray(CFG) || !CFG.length) CFG = [{ p: EXT, m: process.env.MODE || '2', x: '', g: process.env.GREETING || '' }];
 // one opening for both ways to ask: typing with the phone keys, or recording
-const DEFAULT_GREET = 'שלום להקלטה הקש אפס ולהקלדה הקש ספרה אחרת. לסיום השאלה הקש סולמית';
+const DEFAULT_GREET = 'שלום להקלטה הקש אחת ולהקלדה הקש ספרה אחרת. לסיום השאלה הקש סולמית';
 const EXTS = {};
 for (const c of CFG) {
   const p = String(c.p || '').replace(/^\/+|\/+$/g, '');
@@ -677,7 +677,7 @@ const tapAny = (s, pre) => {
   s.n++;
   s.mode = 'wait';
   s.p = 'K' + s.e + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,1,0,' + WAIT_SEC + ',No';
+  return 'read=' + pre + '=' + s.p + ',no,1,1,' + WAIT_SEC + ',No';
 };
 // Collect a continuous sequence until # (Yemot's default end key).
 const kbAsk = (s, pre) => {
@@ -724,10 +724,10 @@ async function turnStep(s, q, id, T0) {
   if (s.job) return holdStep(s, id);
   if (s.mode === 'wait') {
     const d = String(q[s.p] || '').trim();
-    // Zero as the first key starts recording immediately, without another prompt.
-    if (d === '0') return askFor(s, '');
-    if (d && /^[1-9]/.test(d)) return kbStep(s, q, id, T0, d);
-    return tapAny(s, 't-' + sp('להקלטה הקש אפס ולהקלדה הקש ספרה אחרת'));
+    // One as the first key starts recording; other digits start typing.
+    if (d === '1') return askFor(s, '');
+    if (/^[02-9]$/.test(d)) return kbStep(s, q, id, T0, d);
+    return tapAny(s, 't-' + sp('להקלטה הקש אחת ולהקלדה הקש ספרה אחרת'));
   }
   if (s.mode === 'type') return kbStep(s, q, id, T0);
   return runTurn(s, q, id, T0);
@@ -1197,7 +1197,7 @@ app.all(['/yemot', '/yemot/:e'], async (req, res) => {
 
     // first request of the call: the opening message, then the line waits for typing or for silence (recording)
     if (!s.mode) {
-      const g = (await greetFile(s.d, Date.now() + 4000)) ? 'f-' + s.d + '/greet' : 't-' + s.g;
+      const g = 't-' + sp(s.g.replace(/להקלטה הקש (?:אפס|0)/g, 'להקלטה הקש אחת'));
       return res.send(tapAny(s, g));
     }
     const out = await turnStep(s, q, id, T0);
