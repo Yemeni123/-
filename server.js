@@ -774,6 +774,7 @@ async function holdStep(s, id) {
 
 // one turn: take the recording (or the typed text), ask Gemini, read the answer aloud, upload it; returns the reply for Yemot
 async function doTurn(s, q, id, T0, typed) {
+  const saveHistory = s.saveHistory === true;
   const ask = pre => tapAny(s, pre);
   // after the answer the caller is invited to type or record the next question
   const more = pre => ask(pre + '.t-' + KB_MORE);
@@ -808,7 +809,7 @@ async function doTurn(s, q, id, T0, typed) {
     const qtext = typed || ctl.q;
     const histQ = { role: 'user', parts: [{ text: qtext || '[שאלה קולית]' }] };
     // the history keeps text only (question and answer), read back later by the Yemot voice
-    s.save = { qt: qtext || 'לא תומללה', at: text };
+    if (saveHistory) queueHistorySave(s, { qt: qtext || 'לא תומללה', at: text });
     const t2 = Date.now();
 
     let pcm = null;
@@ -838,7 +839,6 @@ async function doTurn(s, q, id, T0, typed) {
   } catch (e) {
     console.error(id, 'turn', s.n, 'failed after', Date.now() - T0, 'ms:', e.message, e.stderr ? '| ' + String(e.stderr).replace(/\s+/g, ' ') : '');
     s.mediaP = null;
-    s.save = null;
     if (!typed) del(qn, s.d);
     return ask('t-' + ERR);
   }
@@ -846,25 +846,29 @@ async function doTurn(s, q, id, T0, typed) {
 
 // ---------- history: every question and answer is kept as a recording in the history extension of Yemot ----------
 // file names (letters and digits only): p<phone>c<8 chars of time>t<turn>q  question, ...t<turn>a  answer, p<phone>c<time>n  spoken name
-const HIST = String(process.env.HISTORY_EXT || '').replace(/^\/+|\/+$/g, '');
+const HIST = String(process.env.HISTORY_EXT || '2').replace(/^\/+|\/+$/g, '');
 const HD = /^[0-9]+(\/[0-9]+)*$/.test(HIST) ? '/' + HIST : '';
 const CONT_TURNS = 2; // how many of the last turns are given to Gemini when a saved conversation is continued
 const phoneOf = q => { const p = String(q.ApiPhone || '').replace(/\D/g, ''); return p.length >= 7 && p.length <= 15 ? p : ''; };
 const hName = (ph, cid, suffix) => 'p' + ph + 'c' + cid + suffix;
 const sortedTurns = c => Object.keys(c.turns).map(Number).filter(n => c.turns[n].q && c.turns[n].a).sort((x, y) => x - y);
 
-// runs after the answer was sent, so it never slows the call; question and answer are saved as text files
+// Save completed turns independently of the next telephone callback.
 async function saveTurn(s, sv) {
   if (!HD || !s.ph) return;
   if (!s.cid) { s.cid = Date.now().toString(36).padStart(8, '0'); s.tn = 0; }
   const cid = s.cid, t = ++s.tn;
   const dl = Date.now() + 45000;
-  await uploadText(hName(s.ph, cid, 't' + t + 'q'), sv.qt, dl, HD);
-  await uploadText(hName(s.ph, cid, 't' + t + 'a'), sv.at, dl, HD);
+  for (const [suffix, value] of [['q', sv.qt], ['a', sv.at]]) {
+    const name = hName(s.ph, cid, 't' + t + suffix);
+    try { await uploadText(name, value, dl, HD); }
+    catch (e) { await uploadText(name, value, Date.now() + 45000, HD); }
+  }
+  console.log('history turn saved', t);
 }
-function flushSave(s) {
-  const sv = s.save; s.save = null;
-  if (sv && HD && s.ph) saveTurn(s, sv).catch(e => console.error('history save failed:', e.message));
+function queueHistorySave(s, sv) {
+  if (!HD || !s.ph) { console.warn('history save skipped: missing directory or caller'); return; }
+  s.saveQueue = (s.saveQueue || Promise.resolve()).then(() => saveTurn(s, sv)).catch(e => console.error('history save failed:', e.message));
 }
 
 // reads the file list of the history extension and groups the files of this caller into conversations, newest first
@@ -1192,6 +1196,7 @@ app.all(['/yemot', '/yemot/:e'], async (req, res) => {
     }
 
     const s = calls[id] || (calls[id] = newSession(ext.d, ext.sys, ext.g, { ph: phoneOf(q) }));
+    s.saveHistory = true;
     s.t = Date.now();
     if (requestedRootByStar(s, q)) { endCall(id); return res.send('go_to_folder=/'); }
 
@@ -1202,7 +1207,6 @@ app.all(['/yemot', '/yemot/:e'], async (req, res) => {
     }
     const out = await turnStep(s, q, id, T0);
     res.send(out);
-    flushSave(s);
   } catch (e) {
     // last resort: always answer Yemot with plain text, never HTML or an empty reply
     console.error(id, 'fatal', e.message);
@@ -1240,6 +1244,7 @@ app.all('/admin', async (req, res) => {
     if (!ADMIN_PHONE || !/^\d{3,12}$/.test(ADMIN_PIN)) return res.send('id_list_message=t-' + sp('מצב ניהול עדיין לא הופעל יש להגדיר מספר מנהל וקוד סודי'));
     if (normalizeAdminPhone(phoneOf(q)) !== ADMIN_PHONE) return res.send('id_list_message=t-' + sp('אין הרשאה לכניסה לשלוחה זו'));
     const s = calls[id] || (calls[id] = newSession(EXT_FIRST.d, ADMIN_SYS, sp('שלום הגעת למצב ניהול קולי'), { ph: phoneOf(q), adminOk: false }));
+    s.saveHistory = false;
     s.t = Date.now();
     if (requestedRootByStar(s, q)) { endCall(id); return res.send('go_to_folder=/'); }
     if (!adminAuth(q, s)) {
@@ -1278,9 +1283,9 @@ app.all('/history', async (req, res) => {
     if (!s.hm) console.log(id, 'history start, params:', Object.keys(q).join(','));
 
     if (s.hm === 'talk') {
+      s.saveHistory = true;
       const out = await turnStep(s, q, id, T0);
       res.send(out);
-      flushSave(s);
       return;
     }
     return res.send(await historyStep(s, q));
