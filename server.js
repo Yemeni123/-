@@ -1212,11 +1212,16 @@ app.all(['/yemot', '/yemot/:e'], async (req, res) => {
 
 // Secure voice-admin extension (intended for IVR extension 3).
 // Fail closed until both ADMIN_PHONE and ADMIN_PIN are configured in Render.
-const ADMIN_PHONE = String(process.env.ADMIN_PHONE || '').replace(/\D/g, '');
+const normalizeAdminPhone = value => {
+  const p = String(value || '').replace(/\D/g, '');
+  if (/^(?:00)?972[1-9]\d{7,8}$/.test(p)) return '0' + p.replace(/^(?:00)?972/, '');
+  return p;
+};
+const ADMIN_PHONE = normalizeAdminPhone(process.env.ADMIN_PHONE);
 const ADMIN_PIN = String(process.env.ADMIN_PIN || '');
 const ADMIN_SYS = buildSys('2', '') + ' אתה במצב ניהול קולי מאובטח. הסבר למנהל על הגדרות המערכת, תקלות ואפשרויות ניהול. אין לך הרשאה לשנות קוד, שרת או הגדרות בשיחה זו. לעולם אל תטען ששינוי בוצע אם לא הופעל כלי ניהול מאומת. אל תבקש סיסמאות או מפתחות API בקול.';
 const adminAuth = (q, s) => {
-  if (!ADMIN_PHONE || !/^\d{3,12}$/.test(ADMIN_PIN) || phoneOf(q) !== ADMIN_PHONE) return false;
+  if (!ADMIN_PHONE || !/^\d{3,12}$/.test(ADMIN_PIN) || normalizeAdminPhone(phoneOf(q)) !== ADMIN_PHONE) return false;
   if (s.adminOk) return true;
   const entered = String(q[s.p] || '').trim();
   if (s.mode === 'admin-pin' && entered && safeEq(entered, ADMIN_PIN)) {
@@ -1233,7 +1238,7 @@ app.all('/admin', async (req, res) => {
   try {
     if (q.hangup === 'yes') { endCall(id); return res.send('noop=bye'); }
     if (!ADMIN_PHONE || !/^\d{3,12}$/.test(ADMIN_PIN)) return res.send('id_list_message=t-' + sp('מצב ניהול עדיין לא הופעל יש להגדיר מספר מנהל וקוד סודי'));
-    if (phoneOf(q) !== ADMIN_PHONE) return res.send('id_list_message=t-' + sp('אין הרשאה לכניסה לשלוחה זו'));
+    if (normalizeAdminPhone(phoneOf(q)) !== ADMIN_PHONE) return res.send('id_list_message=t-' + sp('אין הרשאה לכניסה לשלוחה זו'));
     const s = calls[id] || (calls[id] = newSession(EXT_FIRST.d, ADMIN_SYS, sp('שלום הגעת למצב ניהול קולי'), { ph: phoneOf(q), adminOk: false }));
     s.t = Date.now();
     if (requestedRootByStar(s, q)) { endCall(id); return res.send('go_to_folder=/'); }
