@@ -649,7 +649,7 @@ const askFor = (s, pre) => {
   s.mode = 'rec';
   s.p = 'Q' + s.e + s.n;
   s.name = 'q' + s.e + 'n' + s.n;
-  return 'read=' + pre + '=' + s.p + ',,record,' + s.d + ',' + s.name + ',no,,,1,' + REC_MAX;
+  return 'read=' + (pre || 't-' + sp('דבר עכשיו')) + '=' + s.p + ',,record,' + s.d + ',' + s.name + ',no,,,1,' + REC_MAX;
 };
 // asks for a single key press
 const tapFor = (s, pre) => {
@@ -684,7 +684,7 @@ const kbAsk = (s, pre) => {
   s.n++;
   s.mode = 'type';
   s.p = 'K' + s.e + s.n;
-  return 'read=' + pre + '=' + s.p + ',no,200,1,30,NO';
+  return 'read=' + (pre || 't-' + sp('המשך להקליד')) + '=' + s.p + ',no,200,1,30,NO';
 };
 // Convert continuous multi-tap input into Hebrew. Yemot may return * as a dot.
 function kbDecode(raw) {
