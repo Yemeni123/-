@@ -1415,4 +1415,77 @@ app.use((err, req, res, next) => {
 process.on('unhandledRejection', e => console.error('unhandledRejection', e && e.message));
 process.on('uncaughtException', e => console.error('uncaughtException', e && e.message));
 
+
+// Private, read-only Gmail extension. Separate authentication and call state.
+const mailCalls = new Map();
+const mailPhone = normalizeAdminPhone(process.env.MAIL_PHONE || process.env.ADMIN_PHONE);
+const mailPin = String(process.env.MAIL_PIN || '');
+const mailSecret = String(process.env.MAIL_WEBHOOK_SECRET || '');
+const mailClient = String(process.env.GMAIL_CLIENT_ID || '');
+const mailClientSecret = String(process.env.GMAIL_CLIENT_SECRET || '');
+const mailRefresh = String(process.env.GMAIL_REFRESH_TOKEN || '');
+let mailFailures = [];
+let mailToken = '', mailTokenUntil = 0;
+async function gmailGet(endpoint) {
+  if (Date.now() >= mailTokenUntil) {
+    const r = await fetch('https://oauth2.googleapis.com/token', {method:'POST', body:new URLSearchParams({client_id:mailClient,client_secret:mailClientSecret,refresh_token:mailRefresh,grant_type:'refresh_token'}),signal:AbortSignal.timeout(8000)});
+    const j = await r.json();
+    if (!r.ok || !j.access_token) throw Error('Gmail authorization failed');
+    mailToken = j.access_token; mailTokenUntil = Date.now() + Math.max(0, Number(j.expires_in || 3600)-60)*1000;
+  }
+  const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/'+endpoint,{headers:{Authorization:'Bearer '+mailToken},signal:AbortSignal.timeout(8000)});
+  if (!r.ok) { if(r.status===401) mailTokenUntil=0; throw Error('Gmail request failed'); }
+  return r.json();
+}
+const mailSpeech = v => sp(String(v || '').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/[<>#*%]/g,' ')).slice(0,1200);
+function mailMenu(s, intro) {
+  s.stage='menu';
+  return tapFor(s,'t-'+mailSpeech((intro || '')+' להודעות אחרונות הקש אחת להודעות שלא נקראו הקש שתיים ליציאה הקש אפס'));
+}
+app.all('/mail', async (req,res)=>{
+  res.type('text/plain');
+  const q={...req.query,...req.body};
+  const say=t=>res.send('id_list_message=t-'+mailSpeech(t));
+  if (!mailPhone || !/^\d{6,12}$/.test(mailPin) || mailSecret.length<32 || !mailClient || !mailClientSecret || !mailRefresh) return say('חיבור המייל עדיין לא הוגדר');
+  if (!safeEq(String(req.query.mail_key || ''),mailSecret) || normalizeAdminPhone(phoneOf(q))!==mailPhone || !q.ApiCallId) return say('אין הרשאה');
+  const id=idOf(q);
+  if(q.hangup==='yes'){mailCalls.delete(id);return res.send('noop=bye');}
+  const now=Date.now();
+  for(const [k,v] of mailCalls) if(now-v.t>300000) mailCalls.delete(k);
+  let s=mailCalls.get(id);
+  if(!s){s=newSession('4','','',{stage:'pin',t:now});mailCalls.set(id,s);}
+  s.t=now;
+  try {
+    if(s.stage==='pin'){
+      mailFailures=mailFailures.filter(t=>now-t<900000);
+      if(mailFailures.length>=5){mailCalls.delete(id);return say('יותר מדי ניסיונות נסה מאוחר יותר');}
+      if(s.p && Object.prototype.hasOwnProperty.call(q,s.p)){
+        if(!safeEq(String(q[s.p]),mailPin)){mailFailures.push(now);mailCalls.delete(id);return say('קוד שגוי');}
+        return res.send(mailMenu(s,'התחברת למייל'));
+      }
+      s.p='P'+s.e+(++s.n);
+      return res.send('read=t-הקש קוד מייל ולסיום סולמית='+s.p+',no,12,6,20,No');
+    }
+    const d=String(q[s.p] || '');
+    if(d==='0'||d==='*'){mailCalls.delete(id);return res.send('go_to_folder=/');}
+    if(s.stage==='item'){
+      if(d==='1') {
+        const m=await gmailGet('messages/'+encodeURIComponent(s.ids[s.i])+'?format=full');
+        function plain(p){if(!p)return '';if(p.mimeType==='text/plain'&&p.body&&p.body.data)return Buffer.from(p.body.data,'base64url').toString('utf8');if(p.mimeType==='multipart/alternative'||p.mimeType==='multipart/mixed'||p.mimeType==='multipart/related')return (p.parts||[]).map(plain).filter(Boolean).join(' ');return '';}
+        return res.send(tapFor(s,'t-'+mailSpeech(plain(m.payload)||m.snippet||'אין תוכן טקסט')+'.t-להקראה חוזרת הקש אחת להודעה הבאה שתיים לתפריט שלוש ליציאה אפס'));
+      }
+      if(d==='2'){s.i++;}else{return res.send(mailMenu(s,''));}
+    } else {
+      if(d!=='1'&&d!=='2')return res.send(mailMenu(s,''));
+      const list=await gmailGet('messages?maxResults=10&q='+encodeURIComponent(d==='2'?'in:inbox is:unread':'in:inbox'));
+      s.ids=(list.messages||[]).map(m=>m.id);s.i=0;
+    }
+    if(s.i>=s.ids.length)return res.send(mailMenu(s,'אין עוד הודעות'));
+    const m=await gmailGet('messages/'+encodeURIComponent(s.ids[s.i])+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject');
+    const h=n=>(m.payload?.headers||[]).find(x=>x.name.toLowerCase()===n)?.value||'';
+    s.stage='item';
+    return res.send(tapFor(s,'t-'+mailSpeech('הודעה '+(s.i+1)+' מאת '+h('from')+' נושא '+h('subject'))+'.t-להקראה הקש אחת להודעה הבאה שתיים לתפריט שלוש ליציאה אפס'));
+  } catch(e){console.error('mail request failed');return res.send(mailMenu(s,'לא ניתן לקבל הודעות כרגע'));}
+});
+
 app.listen(process.env.PORT || 3000, () => console.log('kav-ai up'));
