@@ -1417,13 +1417,15 @@ process.on('uncaughtException', e => console.error('uncaughtException', e && e.m
 
 
 // Private, read-only Gmail extension. Separate authentication and call state.
+function registerMailAccount(account) {
+const env = name => process.env[name+'_'+account] || (account===1 ? process.env[name] : '') || '';
 const mailCalls = new Map();
-const mailPhone = normalizeAdminPhone(process.env.MAIL_PHONE || process.env.ADMIN_PHONE);
-const mailPin = String(process.env.MAIL_PIN || '');
-const mailSecret = String(process.env.MAIL_WEBHOOK_SECRET || '');
-const mailClient = String(process.env.GMAIL_CLIENT_ID || '');
-const mailClientSecret = String(process.env.GMAIL_CLIENT_SECRET || '');
-const mailRefresh = String(process.env.GMAIL_REFRESH_TOKEN || '');
+const mailPhone = normalizeAdminPhone(env("MAIL_PHONE") || process.env.ADMIN_PHONE);
+const mailPin = String(env("MAIL_PIN") || '');
+const mailSecret = String(env("MAIL_WEBHOOK_SECRET") || process.env.MAIL_WEBHOOK_SECRET || '');
+const mailClient = String(env("GMAIL_CLIENT_ID") || process.env.GMAIL_CLIENT_ID || '');
+const mailClientSecret = String(env("GMAIL_CLIENT_SECRET") || process.env.GMAIL_CLIENT_SECRET || '');
+const mailRefresh = String(env("GMAIL_REFRESH_TOKEN") || '');
 let mailFailures = [];
 let mailToken = '', mailTokenUntil = 0;
 async function gmailGet(endpoint) {
@@ -1442,7 +1444,7 @@ function mailMenu(s, intro) {
   s.stage='menu';
   return tapFor(s,'t-'+mailSpeech((intro || '')+' להודעות אחרונות הקש אחת להודעות שלא נקראו הקש שתיים ליציאה הקש אפס'));
 }
-app.all('/mail', async (req,res)=>{
+app.all(account===1 ? ['/mail/1','/mail'] : '/mail/2', async (req,res)=>{
   res.type('text/plain');
   const q={...req.query,...req.body};
   const say=t=>res.send('id_list_message=t-'+mailSpeech(t));
@@ -1453,7 +1455,7 @@ app.all('/mail', async (req,res)=>{
   const now=Date.now();
   for(const [k,v] of mailCalls) if(now-v.t>300000) mailCalls.delete(k);
   let s=mailCalls.get(id);
-  if(!s){s=newSession('4','','',{stage:'pin',t:now});mailCalls.set(id,s);}
+  if(!s){s=newSession('4/'+account,'','',{stage:'pin',t:now});mailCalls.set(id,s);}
   s.t=now;
   try {
     if(s.stage==='pin'){
@@ -1467,7 +1469,7 @@ app.all('/mail', async (req,res)=>{
       return res.send('read=t-הקש קוד מייל ולסיום סולמית='+s.p+',no,12,3,20,No');
     }
     const d=String(q[s.p] || '');
-    if(d==='0'||d==='*'){mailCalls.delete(id);return res.send('go_to_folder=/');}
+    if(d==='0'||d==='*'){mailCalls.delete(id);return res.send('go_to_folder=/4');}
     if(s.stage==='item'){
       if(d==='1') {
         const m=await gmailGet('messages/'+encodeURIComponent(s.ids[s.i])+'?format=full');
@@ -1485,7 +1487,12 @@ app.all('/mail', async (req,res)=>{
     const h=n=>(m.payload?.headers||[]).find(x=>x.name.toLowerCase()===n)?.value||'';
     s.stage='item';
     return res.send(tapFor(s,'t-'+mailSpeech('הודעה '+(s.i+1)+' מאת '+h('from')+' נושא '+h('subject'))+'.t-להקראה הקש אחת להודעה הבאה שתיים לתפריט שלוש ליציאה אפס'));
-  } catch(e){console.error('mail request failed');return res.send(mailMenu(s,'לא ניתן לקבל הודעות כרגע'));}
+  } catch(e){console.error('mail request failed');if(s.stage==='pin'){mailCalls.delete(id);return say('הכניסה נכשלה');}return res.send(mailMenu(s,'לא ניתן לקבל הודעות כרגע'));}
 });
+
+
+}
+registerMailAccount(1);
+registerMailAccount(2);
 
 app.listen(process.env.PORT || 3000, () => console.log('kav-ai up'));
