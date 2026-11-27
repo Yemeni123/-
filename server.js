@@ -1446,7 +1446,7 @@ app.all('/mail', async (req,res)=>{
   res.type('text/plain');
   const q={...req.query,...req.body};
   const say=t=>res.send('id_list_message=t-'+mailSpeech(t));
-  if (!mailPhone || !/^\d{6,12}$/.test(mailPin) || mailSecret.length<32 || !mailClient || !mailClientSecret || !mailRefresh) return say('חיבור המייל עדיין לא הוגדר');
+  if (!mailPhone || !/^\d{3,12}$/.test(mailPin) || mailSecret.length<32 || !mailClient || !mailClientSecret || !mailRefresh) return say('חיבור המייל עדיין לא הוגדר');
   if (!safeEq(String(req.query.mail_key || ''),mailSecret) || normalizeAdminPhone(phoneOf(q))!==mailPhone || !q.ApiCallId) return say('אין הרשאה');
   const id=idOf(q);
   if(q.hangup==='yes'){mailCalls.delete(id);return res.send('noop=bye');}
@@ -1464,7 +1464,7 @@ app.all('/mail', async (req,res)=>{
         return res.send(mailMenu(s,'התחברת למייל'));
       }
       s.p='P'+s.e+(++s.n);
-      return res.send('read=t-הקש קוד מייל ולסיום סולמית='+s.p+',no,12,6,20,No');
+      return res.send('read=t-הקש קוד מייל ולסיום סולמית='+s.p+',no,12,3,20,No');
     }
     const d=String(q[s.p] || '');
     if(d==='0'||d==='*'){mailCalls.delete(id);return res.send('go_to_folder=/');}
